@@ -66,6 +66,9 @@ class RoutingAssignment : public HostModule,
 private:
   virtual void timerCallback(std::any payload) final;
 
+  bool updated;
+  int loop;
+
   struct RouteEntry {
     uint32_t nextHop;
     Size metric;
@@ -74,6 +77,7 @@ private:
   std::unordered_map<uint32_t, RouteEntry> routingTable;
   std::vector<std::pair<uint32_t, int>> myInterfaces;
 
+  void send_response(ipv4_t srcIP, ipv4_t destip);
 
 public:
   RoutingAssignment(Host &host);

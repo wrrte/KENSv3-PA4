@@ -8,6 +8,7 @@
 #include <E/Networking/E_NetworkUtil.hpp>
 #include <E/Networking/E_Networking.hpp>
 #include <E/Networking/E_Packet.hpp>
+#include <E/E_TimeUtil.hpp>
 #include <cerrno>
 
 #include "RoutingAssignment.hpp"
@@ -74,7 +75,8 @@ void RoutingAssignment::initialize() {
     sendPacket("IPv4", std::move(packet));
   }
 
-
+  updated = false;
+  this->addTimer(std::any(), 5000000);
 }
 
 void RoutingAssignment::finalize() {}
@@ -107,7 +109,6 @@ void RoutingAssignment::packetArrived(std::string fromModule, Packet &&packet) {
   uint16_t srcport, destport;
   uint32_t srcIP;
   ipv4_t srcip;
-  bool updated = false;
 
   rip_header_t ripheader;
   rip_entry_t ripentry;
@@ -119,19 +120,46 @@ void RoutingAssignment::packetArrived(std::string fromModule, Packet &&packet) {
   packet.readData(42, &ripheader, 4);
 
   if(ripheader.command==1){
+    this->send_response(srcip, srcip);
+  }
+  else if(ripheader.command==2){
+    size_t offset = 46;
+    while (offset + 20 <= packet.getSize()) {
+      packet.readData(46, &ripentry, 20);
+      uint32_t metric = ntohl(ripentry.metric);
+      if (metric > 15) metric = 16;
+      Size newCost = std::min((Size)metric + 1, (Size)16);
+
+      auto it = routingTable.find(ripentry.ip_addr);
+      if (it == routingTable.end() || it->second.metric > newCost) {
+        int recvPort = getRoutingTable(srcip);
+        routingTable[ripentry.ip_addr] = RouteEntry{srcIP, newCost, recvPort};
+        updated = true;
+      }
+      offset += 20;
+    }
+  }
+
+}
+
+void RoutingAssignment::send_response(ipv4_t srcip, ipv4_t destip){
 
     Packet response(46+20*routingTable.size());
 
-    response.writeData(30, &srcIP, 4);
+    response.writeData(30, &destip, 4);
 
     int recvPort = getRoutingTable(srcip);
     std::optional<ipv4_t> ipOpt = getIPAddr(recvPort);
+    if (!ipOpt.has_value()) return;
     ipv4_t ipv4 = ipOpt.value();
     uint16_t udpLength = htons(8 + 4 + 20*routingTable.size());
 
+    uint16_t srcPort = htons(520);
+    uint16_t dstPort = htons(520);
+
     response.writeData(26, &ipv4, 4);
-    response.writeData(34, &destport, 4);
-    response.writeData(36, &srcport, 2); 
+    response.writeData(34, &srcPort, 4);
+    response.writeData(36, &dstPort, 2); 
     response.writeData(38, &udpLength, 2);
 
     rip_header_t response_header;
@@ -157,34 +185,28 @@ void RoutingAssignment::packetArrived(std::string fromModule, Packet &&packet) {
       offset += 20;
     }
 
-    sendPacket(fromModule, std::move(response));
+    sendPacket("IPv4", std::move(response));
   }
-  else if(ripheader.command==2){
-    size_t offset = 46;
-    while (offset + 20 <= packet.getSize()) {
-      packet.readData(46, &ripentry, 20);
-      uint32_t metric = ntohl(ripentry.metric);
-      if (metric > 15) metric = 16;
-      Size newCost = std::min((Size)metric + 1, (Size)16);
-
-      auto it = routingTable.find(ripentry.ip_addr);
-      if (it == routingTable.end() || it->second.metric > newCost) {
-        int recvPort = getRoutingTable(srcip);
-        routingTable[ripentry.ip_addr] = RouteEntry{srcIP, newCost, recvPort};
-        updated = true;
-      }
-      offset += 20;
-    }
-  }
-
-  if (updated) {
-      // 예: 다음 timerCallback에서 반영되도록 깃발 세우기
-    }
-}
 
 void RoutingAssignment::timerCallback(std::any payload) {
-  // Remove below
-  (void)payload;
+
+  if(loop>20)
+    return;
+
+  if(updated){
+    for (int port = 0; port < 16; ++port) {
+      std::optional<ipv4_t> ipOpt = getIPAddr(port);
+      if (!ipOpt.has_value()) continue;
+
+      ipv4_t ipv4 = ipOpt.value();
+      ipv4_t broadcast = {255, 255, 255, 255};
+      this->send_response(ipv4, broadcast);
+    }
+  }
+  updated = false;
+  this->addTimer(payload, 5000000);
+
+  loop++;
 }
 
 } // namespace E
