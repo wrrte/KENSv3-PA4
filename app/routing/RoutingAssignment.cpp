@@ -35,7 +35,6 @@ void RoutingAssignment::initialize() {
     uint32_t ip32;
 
     packet.writeData(26, &ipv4, 4);
-    packet.writeData(30, &broadcast, 4);
     packet.readData(26, &ip32, 4);
 
     // 2. 자기 자신을 routingTable에 등록 (metric 0, nextHop 자기 자신)
@@ -43,36 +42,7 @@ void RoutingAssignment::initialize() {
     myInterfaces.push_back({ip32, port});
 
     // 3. RIP Request 패킷 생성
-
-
-    // UDP Header 구성
-    uint16_t srcPort = htons(520);
-    uint16_t dstPort = htons(520);
-    uint16_t udpLength = htons(8 + 4 + 20); // UDP header (8) + RIP header (4) + 1 entry (20)
-
-    packet.writeData(34, &srcPort, 2);
-    packet.writeData(36, &dstPort, 2);
-    packet.writeData(38, &udpLength, 2);
-
-    // RIP Header (command=1, version=1, 2 bytes zero)
-    rip_header_t ripheader;
-    ripheader.command = 1;
-    ripheader.version = 1;
-    ripheader.zero_0 = 0;
-
-    packet.writeData(42, &ripheader, 4);
-
-    // RIP Entry (Address Family=0, IP=0, metric=16)
-    rip_entry_t ripentry;
-    ripentry.address_family = htons(0);
-    ripentry.zero_1 = 0;
-    ripentry.zero_2 = 0;
-    ripentry.zero_3 = 0;
-    ripentry.metric = htonl(16);
-
-    packet.writeData(46, &ripentry, 20);
-
-    sendPacket("IPv4", std::move(packet));
+    send_response(ipv4, broadcast);
   }
 
   updated = false;
@@ -180,6 +150,9 @@ void RoutingAssignment::send_response(ipv4_t srcip, ipv4_t destip){
       response_entry.address_family = htons(2);
       response_entry.metric = route.metric;
       response_entry.ip_addr = destIP;
+      response_entry.zero_1 = 0;
+      response_entry.zero_2 = 0;
+      response_entry.zero_3 = 0;
 
       response.writeData(offset, &response_entry, 20);
       offset += 20;
