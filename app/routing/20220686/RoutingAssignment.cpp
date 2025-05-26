@@ -233,7 +233,8 @@ void RoutingAssignment::send_response(ipv4_t srcip, ipv4_t destip){
 
 void RoutingAssignment::timerCallback(std::any payload) {
 
-
+  if(loop>20)
+    return;
 
   if(updated){
     for (int port = 0; port < 16; ++port) {
