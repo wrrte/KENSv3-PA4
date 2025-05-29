@@ -10,6 +10,11 @@
 #include <E/Networking/E_Packet.hpp>
 #include <E/E_TimeUtil.hpp>
 #include <cerrno>
+#include <arpa/inet.h>
+#include <optional>
+#include <any>
+#include <utility>
+#include <algorithm>
 
 #include "RoutingAssignment.hpp"
 
@@ -33,6 +38,9 @@ std::string ipToString(uint32_t ip) {
 
 
 void RoutingAssignment::initialize() {
+
+  routingTable.clear();
+  myInterfaces.clear();
 
   for (int port = 0; port < 16; ++port) {
     std::optional<ipv4_t> ipOpt = getIPAddr(port);
@@ -233,7 +241,8 @@ void RoutingAssignment::send_response(ipv4_t srcip, ipv4_t destip){
 
 void RoutingAssignment::timerCallback(std::any payload) {
 
-
+  if(loop > 40)
+    return;
 
   if(updated){
     for (int port = 0; port < 16; ++port) {
